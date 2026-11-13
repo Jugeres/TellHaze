@@ -2,13 +2,16 @@
 Endpoint REST API.
 """
 
+import csv
+import io
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.orm import Session
 
 from app import config
+from app.data_source import fetch_multi
 from app.db import get_db
 from app.ispu import (
     PARAMETER_DIHITUNG,
@@ -16,7 +19,7 @@ from app.ispu import (
     rata_rata_bergerak,
 )
 from app.models import Location, Measurement
-from app.service import refresh_semua_lokasi
+from app.service import _proses_record_lokasi, refresh_semua_lokasi
 
 router = APIRouter()
 
@@ -226,3 +229,122 @@ def refresh(db: Session = Depends(get_db)):
     """Memicu fetch Open-Meteo untuk semua lokasi, hitung, simpan."""
     log = refresh_semua_lokasi(db)
     return {"status": "selesai", "log": log}
+
+
+@router.get("/api/export/csv")
+def ekspor_csv(db: Session = Depends(get_db)):
+    """
+    Unduh status terbaru seluruh kota sebagai CSV (bisa dibuka di Excel).
+    Kolom konsentrasi diambil dari baris jam terakhir tiap lokasi.
+    """
+    # BOM UTF-8 agar karakter µ dan kategori terbaca benar oleh Excel.
+    BOM = "\ufeff"
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow([
+        "peringkat", "kota", "provinsi", "lat", "lon",
+        "ispu", "kategori", "parameter_kritis", "waktu_data",
+        "pm25_ugm3", "pm10_ugm3", "co_ugm3", "no2_ugm3", "so2_ugm3", "o3_ugm3",
+    ])
+
+    lokasi_list = db.query(Location).all()
+    baris_data = []
+    for loc in lokasi_list:
+        terakhir = (
+            db.query(Measurement)
+            .filter(Measurement.location_id == loc.id)
+            .order_by(Measurement.timestamp.desc())
+            .first()
+        )
+        baris_data.append((loc, terakhir))
+
+    # Urutkan dari ISPU tertinggi; lokasi tanpa data taruh paling bawah.
+    baris_data.sort(
+        key=lambda x: x[1].ispu_value if x[1] is not None and x[1].ispu_value is not None else -1,
+        reverse=True,
+    )
+
+    for peringkat, (loc, m) in enumerate(baris_data, start=1):
+        if m is None:
+            writer.writerow([peringkat, loc.name, loc.province, loc.lat, loc.lon,
+                             "", "Tidak ada data", "", "", "", "", "", "", "", ""])
+            continue
+        writer.writerow([
+            peringkat, loc.name, loc.province, loc.lat, loc.lon,
+            None if m.ispu_value is None else round(m.ispu_value),
+            m.category, m.critical_parameter or "", m.timestamp.isoformat(),
+            _fmt(m.pm25), _fmt(m.pm10), _fmt(m.co), _fmt(m.no2), _fmt(m.so2), _fmt(m.o3),
+        ])
+
+    return Response(
+        content=(BOM + buffer.getvalue()).encode("utf-8"),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="tellhaze_ispu.csv"'},
+    )
+
+
+def _fmt(nilai: float | None) -> str:
+    """Format angka konsentrasi untuk CSV: None jadi string kosong."""
+    return "" if nilai is None else f"{nilai:g}"
+
+
+@router.post("/api/locations/import")
+async def impor_lokasi_csv(request: Request, db: Session = Depends(get_db)):
+    """
+    Impor daftar lokasi dari teks CSV (body request, bukan multipart).
+
+    Format minimal tiap baris: name,province,lat,lon
+    Lokasi baru langsung di-fetch datanya dari Open-Meteo.
+    """
+    teks = (await request.body()).decode("utf-8-sig")
+    reader = csv.DictReader(io.StringIO(teks))
+
+    ditambah: list[Location] = []
+    dilewati: list[str] = []
+    tidak_valid: list[str] = []
+
+    for i, row in enumerate(reader, start=2):  # baris 1 adalah header
+        # Toleran terhadap spasi/beda kapital di nama kolom.
+        row = {(k or "").strip().lower(): (v or "").strip() for k, v in row.items()}
+        nama = row.get("name", "")
+        provinsi = row.get("province") or "Lainnya"
+        try:
+            lat, lon = float(row.get("lat", "")), float(row.get("lon", ""))
+        except ValueError:
+            tidak_valid.append(f"baris {i}: lat/lon bukan angka")
+            continue
+        if not nama:
+            tidak_valid.append(f"baris {i}: kolom name kosong")
+            continue
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+            tidak_valid.append(f"baris {i}: koordinat di luar rentang")
+            continue
+        if db.query(Location).filter(Location.name == nama).first() is not None:
+            dilewati.append(f"{nama} (sudah ada)")
+            continue
+        ditambah.append(Location(name=nama, province=provinsi, lat=lat, lon=lon))
+
+    for loc in ditambah:
+        db.add(loc)
+    db.commit()
+
+    # Fetch data untuk lokasi yang baru saja ditambahkan.
+    log_fetch: list[str] = []
+    if ditambah:
+        try:
+            data = fetch_multi([(l.lat, l.lon) for l in ditambah])
+            for loc in ditambah:
+                records = data.get((loc.lat, loc.lon))
+                if records:
+                    log_fetch.append(_proses_record_lokasi(db, loc, records))
+                else:
+                    log_fetch.append(f"{loc.name}: GAGAL - tidak ada data Open-Meteo")
+        except Exception as e:  # noqa: BLE001
+            log_fetch.append(f"FETCH GAGAL - {type(e).__name__}: {e}")
+
+    return {
+        "added": len(ditambah),
+        "skipped": dilewati,
+        "invalid": tidak_valid,
+        "fetch_log": log_fetch,
+    }

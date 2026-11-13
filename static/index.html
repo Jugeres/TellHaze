@@ -72,6 +72,44 @@
     #tombol-refresh:disabled { opacity: 0.55; cursor: wait; }
     #tombol-refresh:hover:not(:disabled) { filter: brightness(1.15); }
 
+    /* Kontrol header: auto-refresh + tombol tema */
+    #pilih-auto {
+      font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+      border: 1px solid var(--garis); background: var(--panel); color: var(--tinta);
+      border-radius: 999px; padding: 6px 10px;
+    }
+    #hitung-mundur { font-size: 12px; color: var(--tinta-redup); min-width: 34px; display: inline-block; }
+    #tombol-tema {
+      font: inherit; font-size: 15px; cursor: pointer;
+      border: 1px solid var(--garis); background: var(--panel); color: var(--tinta);
+      border-radius: 999px; padding: 5px 11px;
+    }
+    #tombol-tema:hover { border-color: var(--bara); }
+
+    /* Tombol kecil (impor/ekspor CSV, tampilkan lebih banyak) */
+    .tombol-kecil {
+      font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+      border: 1px solid var(--garis); background: var(--panel); color: var(--tinta);
+      padding: 6px 14px; border-radius: 999px; text-decoration: none;
+      display: inline-block; backdrop-filter: blur(8px);
+    }
+    .tombol-kecil:hover { border-color: var(--bara); color: var(--bara); }
+
+    /* Dialog impor CSV */
+    dialog {
+      background: var(--panel-solid); color: var(--tinta);
+      border: 1px solid var(--garis); border-radius: var(--r-panel);
+      padding: 20px 22px; width: min(500px, 92vw);
+    }
+    dialog::backdrop { background: rgba(4, 6, 10, 0.65); backdrop-filter: blur(2px); }
+    dialog h3 { margin: 0 0 6px; font-size: 18px; }
+    dialog .ket-dialog { font-size: 12.5px; color: var(--tinta-redup); margin: 0 0 12px; }
+    dialog code {
+      font-family: ui-monospace, monospace; font-size: 12px;
+      background: rgba(255, 255, 255, 0.06); padding: 1px 5px; border-radius: 4px;
+    }
+    #hasil-impor { font-size: 13px; margin-top: 12px; white-space: pre-wrap; max-height: 190px; overflow-y: auto; }
+
     /* ---------- Tata letak utama ---------- */
     #utama { display: flex; gap: 14px; padding: 0 22px 10px; }
 
@@ -189,6 +227,9 @@
 
     /* ---------- Tabel peringkat ---------- */
     #bagian-tabel { padding: 4px 22px 18px; }
+    .header-tabel { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+    #aksi-tabel { display: flex; gap: 8px; }
+    #kontrol-tabel { display: flex; gap: 8px; margin-top: 12px; }
     #bagian-tabel h2 { font-size: 17px; font-weight: 700; margin: 6px 0 2px; letter-spacing: -0.01em; }
     #bagian-tabel .ket-tabel { font-size: 13px; color: var(--tinta-redup); margin: 0 0 10px; }
     table { width: 100%; border-collapse: separate; border-spacing: 0; background: var(--panel); backdrop-filter: blur(8px); border: 1px solid var(--garis); border-radius: var(--r-panel); overflow: hidden; }
@@ -204,6 +245,25 @@
     td .angka-tabel { font-family: "Bricolage Grotesque"; font-weight: 700; font-size: 16px; }
     .badge-kategori { color: #fff; font-size: 11.5px; font-weight: 600; padding: 2px 9px; border-radius: 999px; }
     .abu-teks { color: var(--tinta-redup); }
+
+    /* ---------- Tema terang (Light Mode) ----------
+       Menimpa variabel warna tema gelap di atas body, bukan :root,
+       sehingga semua elemen di dalam body ikut berubah. */
+    body.light {
+      --malam: #e7edf1;
+      --panel: rgba(255, 255, 255, 0.92);
+      --panel-solid: #ffffff;
+      --tinta: #123b47;
+      --tinta-redup: #5b7280;
+      --garis: #cfd9e0;
+      --bara: #b4531a;
+      background:
+        radial-gradient(1200px 420px at 72% -140px, rgba(194, 65, 12, 0.10), transparent 62%),
+        radial-gradient(900px 400px at 15% -180px, rgba(127, 29, 29, 0.07), transparent 65%),
+        #e7edf1;
+      background-attachment: fixed;
+    }
+    body.light #area-peta, body.light #peta { background: #dfe8ee; }
 
     /* Marker angka ISPU */
     .marker-ispu {
@@ -243,6 +303,17 @@
     <h1>Tell<em>Haze</em></h1>
     <span id="status-data" class="status-data">Memuat data…</span>
     <button id="tombol-refresh">Perbarui data</button>
+    <label style="display:flex; align-items:center; gap:6px;">
+      <span style="font-size:13px; color:var(--tinta-redup);">Otomatis</span>
+      <select id="pilih-auto">
+        <option value="0">nonaktif</option>
+        <option value="60">tiap 1 menit</option>
+        <option value="300">tiap 5 menit</option>
+        <option value="900">tiap 15 menit</option>
+      </select>
+      <span id="hitung-mundur"></span>
+    </label>
+    <button id="tombol-tema" title="Ganti tema terang/gelap">☀️</button>
   </header>
 
   <div id="utama">
@@ -299,8 +370,16 @@
 
   <!-- Tabel peringkat lengkap -->
   <section id="bagian-tabel">
-    <h2>Peringkat seluruh kota</h2>
-    <p class="ket-tabel">Klik baris untuk menampilkan detail kota pada peta di atas.</p>
+    <div class="header-tabel">
+      <div>
+        <h2>Peringkat seluruh kota</h2>
+        <p class="ket-tabel">Klik baris untuk menampilkan detail kota pada peta di atas.</p>
+      </div>
+      <div id="aksi-tabel">
+        <button id="tombol-impor" class="tombol-kecil">Impor lokasi (CSV)</button>
+        <a id="tombol-ekspor" class="tombol-kecil" href="/api/export/csv" download>Ekspor CSV</a>
+      </div>
+    </div>
     <table>
       <thead>
         <tr>
@@ -314,7 +393,28 @@
       </thead>
       <tbody id="isi-tabel"></tbody>
     </table>
+
+    <div id="kontrol-tabel">
+      <button id="tombol-lebih" class="tombol-kecil"></button>
+      <button id="tombol-semua" class="tombol-kecil"></button>
+    </div>
   </section>
+
+  <!-- Dialog impor lokasi CSV -->
+  <dialog id="dialog-impor">
+    <h3>Impor lokasi dari CSV</h3>
+    <p class="ket-dialog">
+      Format kolom: <code>name,province,lat,lon</code> — contoh:
+      <code>Semarang,Jawa Tengah,-6.9667,110.4167</code>.<br>
+      Lokasi baru otomatis langsung diambil datanya dari Open-Meteo.
+    </p>
+    <input type="file" id="file-impor" accept=".csv,text/csv" />
+    <div id="hasil-impor"></div>
+    <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:14px;">
+      <button id="proses-impor" class="tombol-kecil">Impor sekarang</button>
+      <button id="tutup-dialog" class="tombol-kecil">Tutup</button>
+    </div>
+  </dialog>
 
   <footer>
     Sumber data: Open-Meteo Air Quality (model CAMS) — hasil model, bukan pengukuran sensor stasiun. Parameter HC tidak tersedia.
@@ -344,13 +444,44 @@
     const URUTAN_POLUTAN = ['pm25', 'pm10', 'co', 'no2', 'so2', 'o3'];
 
     // ============ Peta ============
-    // Peta Leaflet: tile dark mode Esri Dark Gray Canvas (gratis, tanpa API key),
-    // + lapisan label jalan pada tile terpisah.
+    // Peta Leaflet: dua set tile, diganti mengikuti tema.
+    // Gelap: Esri Dark Gray Canvas (gratis, tanpa API key) + lapisan label.
+    // Terang: OpenStreetMap standar.
     const peta = L.map('peta', { zoomControl: false }).setView([-6.9, 110.5], 8);
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+    const tileDark = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
       attribution: 'Tiles &copy; Esri — Esri, HERE, Garmin, &copy; OpenStreetMap'
-    }).addTo(peta);
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}').addTo(peta);
+    });
+    const tileDarkLabel = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}');
+    const tileLight = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap'
+    });
+
+    function terapkanTemaPeta() {
+      const terang = document.body.classList.contains('light');
+      [tileDark, tileDarkLabel, tileLight].forEach(l => {
+        if (peta.hasLayer(l)) peta.removeLayer(l);
+      });
+      if (terang) {
+        tileLight.addTo(peta);
+      } else {
+        tileDark.addTo(peta);
+        tileDarkLabel.addTo(peta);
+      }
+    }
+
+    // Terapkan tema tersimpan SEBELUM peta digambar agar tidak berkedip.
+    const temaTersimpan = localStorage.getItem('tellhaze-tema') || 'dark';
+    if (temaTersimpan === 'light') document.body.classList.add('light');
+    document.getElementById('tombol-tema').textContent =
+      temaTersimpan === 'light' ? '🌙' : '☀️';
+    terapkanTemaPeta();
+
+    document.getElementById('tombol-tema').addEventListener('click', () => {
+      const jadiTerang = document.body.classList.toggle('light');
+      localStorage.setItem('tellhaze-tema', jadiTerang ? 'light' : 'dark');
+      document.getElementById('tombol-tema').textContent = jadiTerang ? '🌙' : '☀️';
+      terapkanTemaPeta();
+    });
     L.control.zoom({ position: 'bottomright' }).addTo(peta);
 
     // Legenda ringkas.
@@ -365,19 +496,26 @@
     let lokasiTerpilih = null;
 
     // ============ Muat data utama ============
+    let sibukMemuat = false; // cegah muatSemua tumpang tindih (auto-refresh)
     async function muatSemua() {
-      const [lokasiRes, geoRes, sumRes] = await Promise.all([
-        fetch('/api/locations'), fetch('/api/ispu/latest'), fetch('/api/summary')
-      ]);
-      semuaLokasi = await lokasiRes.json();
-      const geojson = await geoRes.json();
-      const ringkasan = await sumRes.json();
+      if (sibukMemuat) return;
+      sibukMemuat = true;
+      try {
+        const [lokasiRes, geoRes, sumRes] = await Promise.all([
+          fetch('/api/locations'), fetch('/api/ispu/latest'), fetch('/api/summary')
+        ]);
+        semuaLokasi = await lokasiRes.json();
+        const geojson = await geoRes.json();
+        const ringkasan = await sumRes.json();
 
-      tampilkanStatus(ringkasan);
-      gambarMarker(geojson.features);
-      bangunFilter();
-      tampilkanRingkasan(geojson.features, ringkasan);
-      isiTabel(geojson.features);
+        tampilkanStatus(ringkasan);
+        gambarMarker(geojson.features);
+        bangunFilter();
+        tampilkanRingkasan(geojson.features, ringkasan);
+        isiTabel(geojson.features);
+      } finally {
+        sibukMemuat = false;
+      }
     }
 
     function tampilkanStatus(ringkasan) {
@@ -396,6 +534,9 @@
 
     // ============ Marker ============
     function gambarMarker(features) {
+      // Bersihkan marker lama supaya pembaruan data tidak menggandakan.
+      Object.values(markerPerLokasi).forEach(m => peta.removeLayer(m));
+      markerPerLokasi = {};
       for (const f of features) {
         const p = f.properties;
         const [lon, lat] = f.geometry.coordinates;
@@ -417,9 +558,21 @@
         marker.on('click', () => bukaDetail(p.id));
         markerPerLokasi[p.id] = marker;
       }
+      // Jika ada filter provinsi aktif, sembunyikan marker di luar wilayahnya.
+      terapkanFilterAktif();
     }
 
     // ============ Filter provinsi ============
+    function terapkanFilterAktif() {
+      const provinsiAktif = document.querySelector('.pill.aktif')?.dataset.prov ?? '';
+      if (provinsiAktif === '') return; // "Semua wilayah"
+      for (const l of semuaLokasi) {
+        const marker = markerPerLokasi[l.id];
+        if (!marker) continue;
+        if (l.province !== provinsiAktif) peta.removeLayer(marker);
+      }
+    }
+
     function bangunFilter() {
       const provinsi = [...new Set(semuaLokasi.map(l => l.province))];
       const wadah = document.getElementById('filter-provinsi');
@@ -437,13 +590,12 @@
       b.addEventListener('click', () => {
         lokasiTerpilih = null; tutupPanelDetail();
         for (const el of document.querySelectorAll('.pill')) el.classList.toggle('aktif', el === b);
+        // Tampilkan semua marker dulu, lalu sembunyikan di luar provinsi terpilih.
         for (const l of semuaLokasi) {
-          const tampil = provinsi === null || l.province === provinsi;
           const marker = markerPerLokasi[l.id];
-          if (!marker) continue;
-          if (tampil) { if (!peta.hasLayer(marker)) marker.addTo(peta); }
-          else peta.removeLayer(marker);
+          if (marker && !peta.hasLayer(marker)) marker.addTo(peta);
         }
+        terapkanFilterAktif();
         if (provinsi) {
           // Pusatkan ke wilayah yang dipilih.
           const titik = semuaLokasi.filter(l => l.province === provinsi);
@@ -492,12 +644,20 @@
         `${ringkasan.total_lokasi} kota dipantau, ${ringkasan.lokasi_berdata} punya data.`;
     }
 
-    // ============ Tabel peringkat ============
+    // ============ Tabel peringkat (paginasi "tampilkan lebih banyak") ============
+    const TAMPIL_AWAL = 10;
+    let batasTampil = TAMPIL_AWAL;
+    let daftarTabel = [];
+
     function isiTabel(features) {
-      const baris = features
+      daftarTabel = features
         .map(f => f.properties)
         .sort((a, b) => (b.ispu ?? -1) - (a.ispu ?? -1));
-      document.getElementById('isi-tabel').innerHTML = baris.map((p, i) => `
+      renderTabel();
+    }
+
+    function renderTabel() {
+      document.getElementById('isi-tabel').innerHTML = daftarTabel.slice(0, batasTampil).map((p, i) => `
         <tr data-id="${p.id}">
           <td class="ka">${i + 1}</td>
           <td><b>${p.name}</b></td>
@@ -509,7 +669,33 @@
       for (const tr of document.querySelectorAll('#isi-tabel tr')) {
         tr.addEventListener('click', () => bukaDetail(Number(tr.dataset.id)));
       }
+      perbaruiKontrolTabel();
     }
+
+    function perbaruiKontrolTabel() {
+      const total = daftarTabel.length;
+      const lebih = document.getElementById('tombol-lebih');
+      const semua = document.getElementById('tombol-semua');
+      if (batasTampil >= total) {
+        lebih.textContent = `Tampilkan lebih sedikit (${total} kota)`;
+        semua.style.display = 'none';
+      } else {
+        lebih.textContent = `Tampilkan 10 lagi (${batasTampil} dari ${total} kota)`;
+        semua.style.display = '';
+        semua.textContent = 'Tampilkan semua';
+      }
+    }
+
+    document.getElementById('tombol-lebih').addEventListener('click', () => {
+      batasTampil = batasTampil >= daftarTabel.length
+        ? TAMPIL_AWAL  // sudah terbuka semua -> lipat kembali
+        : Math.min(batasTampil + 10, daftarTabel.length);
+      renderTabel();
+    });
+    document.getElementById('tombol-semua').addEventListener('click', () => {
+      batasTampil = daftarTabel.length;
+      renderTabel();
+    });
 
     // ============ Panel detail kota ============
     async function bukaDetail(id) {
@@ -601,7 +787,7 @@
           },
           scales: {
             x: { ticks: { maxTicksLimit: 6, font: { size: 10 }, color: '#94a3b8' }, grid: { display: false } },
-            y: { beginAtZero: true, suggestedMax: 200, ticks: { maxTicksLimit: 5, font: { size: 10 }, color: '#94a3b8' }, grid: { color: 'rgba(241, 245, 249, 0.07)' } }
+            y: { beginAtZero: true, suggestedMax: 200, ticks: { maxTicksLimit: 5, font: { size: 10 }, color: '#94a3b8' }, grid: { color: 'rgba(148, 163, 184, 0.25)' } }
           }
         }
       });
@@ -618,12 +804,59 @@
       tombol.disabled = true;
       tombol.textContent = 'Mengambil data…';
       await fetch('/api/refresh', { method: 'POST' });
-      // Bersihkan marker lama lalu gambar ulang dari data baru.
-      Object.values(markerPerLokasi).forEach(m => peta.removeLayer(m));
-      markerPerLokasi = {};
-      await muatSemua();
+      await muatSemua();  // marker lama dibersihkan di dalamnya
       tombol.disabled = false;
       tombol.textContent = 'Perbarui data';
+    });
+
+    // ============ Auto refresh terjadwal ============
+    // Interval hanya menyegarkan data dari DATABASE LOKAL (murah & cepat);
+    // fetch Open-Meteo tetap manual lewat tombol "Perbarui data" agar
+    // tidak mengganggu rate-limit API.
+    let timerAuto = null;
+    const pilihAuto = document.getElementById('pilih-auto');
+    pilihAuto.addEventListener('change', () => {
+      clearInterval(timerAuto);
+      const label = document.getElementById('hitung-mundur');
+      const detik = Number(pilihAuto.value);
+      if (!detik) { label.textContent = ''; return; }
+      let sisa = detik;
+      label.textContent = `${sisa}s`;
+      timerAuto = setInterval(() => {
+        sisa--;
+        if (sisa <= 0) {
+          sisa = detik;
+          muatSemua();
+        }
+        label.textContent = `${sisa}s`;
+      }, 1000);
+    });
+
+    // ============ Dialog impor lokasi CSV ============
+    const dialog = document.getElementById('dialog-impor');
+    document.getElementById('tombol-impor').addEventListener('click', () => {
+      document.getElementById('hasil-impor').textContent = '';
+      dialog.showModal();
+    });
+    document.getElementById('tutup-dialog').addEventListener('click', () => dialog.close());
+    document.getElementById('proses-impor').addEventListener('click', async () => {
+      const file = document.getElementById('file-impor').files[0];
+      const hasil = document.getElementById('hasil-impor');
+      if (!file) { hasil.textContent = 'Pilih file CSV dulu.'; return; }
+      hasil.textContent = 'Mengimpor…';
+      const teks = await file.text();
+      const res = await fetch('/api/locations/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        body: teks
+      });
+      const info = await res.json();
+      hasil.textContent =
+        `Ditambahkan: ${info.added}\n` +
+        (info.skipped.length ? `Dilewati (duplikat): ${info.skipped.join(', ')}\n` : '') +
+        (info.invalid.length ? `Tidak valid: ${info.invalid.join('; ')}\n` : '') +
+        info.fetch_log.map(l => `· ${l}`).join('\n');
+      await muatSemua();  // gambar ulang marker & tabel dengan lokasi baru
     });
 
     // Muat pertama kali.
