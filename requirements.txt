@@ -1,0 +1,8 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+SQLAlchemy==2.0.36
+httpx==0.28.1
+pytest==8.3.4
+# tzdata: zona waktu untuk zoneinfo (dibutuhkan khusus di Windows karena
+# Windows tidak punya database zona waktu bawaan seperti Linux/macOS).
+tzdata==2024.2

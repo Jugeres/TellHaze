@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TellHaze — Pantau ISPU Jawa Barat &amp; Jawa Timur</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Instrument+Sans:ital,wght@0,400..700;1,400..600&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ============================================================
+       TellHaze — identitas visual: udara berkabut.
+       Latar kabut biru-pucat, tinta teal-gelap, satu elemen berani:
+       angka ISPU raksasa pada panel detail kota.
+       ============================================================ */
+    :root {
+      --kabut: #e7edf1;      /* latar halaman, seperti langit berkabut */
+      --panel: #fbfcfd;      /* permukaan panel */
+      --tinta: #123b47;      /* teks utama, teal gelap */
+      --tinta-redup: #5b7280;
+      --garis: #cfd9e0;      /* hairline */
+      --aksen: #b4531a;      /* aksen hangat (asap) dipakai hemat */
+      --hijau: #1e9e4f; --biru: #2f6fdb; --kuning: #e3b915;
+      --merah: #d33a2c; --hitam: #17181a; --abu: #8a959e;
+      --r-panel: 16px; --r-kecil: 9px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100%; background: var(--kabut); color: var(--tinta);
+      font: 15px/1.55 "Instrument Sans", system-ui, sans-serif;
+      display: flex; flex-direction: column;
+    }
+    h1, h2, h3, .angka { font-family: "Bricolage Grotesque", sans-serif; }
+
+    /* ---------- Kepala halaman ---------- */
+    header {
+      display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+      padding: 18px 22px 12px;
+    }
+    header h1 { font-size: 26px; font-weight: 800; margin: 0; letter-spacing: -0.02em; }
+    header h1 em { font-style: normal; color: var(--aksen); }
+    .status-data { color: var(--tinta-redup); font-size: 13.5px; }
+    .status-data::before {
+      content: ""; display: inline-block; width: 8px; height: 8px;
+      border-radius: 50%; background: var(--hijau); margin-right: 6px;
+      vertical-align: 1px;
+    }
+    #tombol-refresh {
+      margin-left: auto; font: inherit; cursor: pointer;
+      border: 1.5px solid var(--tinta); background: var(--tinta);
+      color: var(--panel); padding: 7px 18px; border-radius: 999px;
+      font-weight: 600;
+    }
+    #tombol-refresh:disabled { opacity: 0.55; cursor: wait; }
+    #tombol-refresh:hover:not(:disabled) { background: transparent; color: var(--tinta); }
+
+    /* ---------- Tata letak utama ---------- */
+    #utama { display: flex; gap: 14px; padding: 0 22px 10px; }
+
+    /* Kolom kiri: waspada + sebaran */
+    #kolom-kiri {
+      width: 315px; flex: none; display: flex; flex-direction: column;
+      gap: 14px; overflow-y: auto; padding-right: 2px;
+    }
+    .panel {
+      background: var(--panel); border: 1px solid var(--garis);
+      border-radius: var(--r-panel); padding: 14px 16px;
+    }
+    .panel h2 {
+      font-size: 13px; font-weight: 700; letter-spacing: 0.06em;
+      text-transform: uppercase; color: var(--tinta-redup); margin: 0 0 10px;
+    }
+
+    #waspada { display: flex; flex-direction: column; gap: 2px; }
+    .baris-waspada {
+      display: flex; align-items: center; gap: 10px;
+      padding: 7px 10px; border-radius: var(--r-kecil); cursor: pointer;
+      border: 1px solid transparent;
+    }
+    .baris-waspada:hover { background: #eef2f6; }
+    .baris-waspada .peringkat {
+      font-family: "Bricolage Grotesque"; font-weight: 700; color: var(--tinta-redup);
+      width: 16px; text-align: right; font-size: 14px;
+    }
+    .strip-kategori { width: 4px; height: 30px; border-radius: 2px; flex: none; }
+    .identitas { flex: 1; min-width: 0; }
+    .identitas .nama { font-weight: 600; line-height: 1.25; }
+    .identitas .prov { font-size: 12px; color: var(--tinta-redup); }
+    .skor-kecil { font-family: "Bricolage Grotesque"; font-size: 24px; font-weight: 700; }
+
+    /* Sebaran kategori: satu bar penuh */
+    #bar-sebaran { display: flex; height: 14px; border-radius: 7px; overflow: hidden; margin: 4px 0 10px; }
+    #bar-sebaran span { display: block; }
+    .kisi-sebaran { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12.5px; color: var(--tinta-redup); }
+    .kisi-sebaran b { color: var(--tinta); font-family: "Bricolage Grotesque"; }
+    .kunci { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; }
+
+    .info-kecil { font-size: 12.5px; color: var(--tinta-redup); line-height: 1.5; }
+    .info-kecil b { color: var(--tinta); }
+
+    /* Area peta */
+    #area-peta { flex: 1; position: relative; border-radius: var(--r-panel); overflow: hidden; border: 1px solid var(--garis); height: 62vh; min-height: 430px; }
+    #peta { position: absolute; inset: 0; background: #dfe8ee; }
+
+    /* Filter provinsi menempel di atas peta */
+    #filter-provinsi {
+      position: absolute; top: 10px; left: 10px; z-index: 1000;
+      display: flex; flex-wrap: wrap; gap: 6px; max-width: 70%;
+    }
+    .pill {
+      font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+      border: 1px solid var(--garis); background: var(--panel); color: var(--tinta);
+      padding: 5px 13px; border-radius: 999px;
+    }
+    .pill.aktif { background: var(--tinta); color: var(--panel); border-color: var(--tinta); }
+
+    /* Legenda ringkas di bawah kiri peta */
+    #legenda {
+      position: absolute; bottom: 8px; left: 10px; z-index: 1000;
+      background: rgba(251, 252, 253, 0.92); border: 1px solid var(--garis);
+      border-radius: var(--r-kecil); padding: 6px 10px; font-size: 11.5px;
+      display: flex; gap: 10px; align-items: center; color: var(--tinta);
+    }
+    #legenda .kunci { margin-right: 3px; }
+
+    /* Panel detail kota: slide dari kanan atas peta */
+    #detail {
+      position: absolute; top: 10px; right: 10px; z-index: 1000;
+      width: 330px; max-height: calc(100% - 20px); overflow-y: auto;
+      background: var(--panel); border: 1px solid var(--garis);
+      border-radius: var(--r-panel); padding: 16px 18px 12px;
+      box-shadow: 0 8px 30px rgba(18, 59, 71, 0.16);
+      display: none;
+    }
+    #detail.tampak { display: block; }
+    #tutup-detail {
+      float: right; border: 0; background: none; cursor: pointer;
+      font-size: 18px; color: var(--tinta-redup); line-height: 1; padding: 2px 4px;
+    }
+    .detail-atas { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+    #detail-nama { font-size: 21px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+    #detail-prov { color: var(--tinta-redup); font-size: 12.5px; margin: 0 0 8px; }
+    .badan-status {
+      display: inline-block; font-size: 12px; font-weight: 600;
+      color: #fff; padding: 2px 10px; border-radius: 999px; margin-bottom: 8px;
+    }
+    /* Angka ISPU raksasa — elemen berani satu-satunya */
+    .ispu-besar {
+      display: flex; align-items: baseline; gap: 10px; margin: 2px 0 2px;
+    }
+    .angka-besar { font-size: 68px; font-weight: 800; line-height: 1; letter-spacing: -0.04em; }
+    .ket-besar { font-size: 12.5px; color: var(--tinta-redup); max-width: 130px; line-height: 1.4; }
+    #detail-saran {
+      border-left: 3px solid var(--garis); padding: 4px 0 4px 10px;
+      margin: 10px 0 12px; font-size: 13px;
+    }
+    .wadah-grafik { position: relative; height: 160px; width: 100%; }
+    .ket-grafik { font-size: 11.5px; color: var(--tinta-redup); margin: 4px 0 10px; }
+    #kisi-polutan {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;
+      margin-bottom: 6px;
+    }
+    .sel-polutan { background: #eef2f6; border-radius: var(--r-kecil); padding: 6px 8px; }
+    .sel-polutan .p { font-size: 11px; color: var(--tinta-redup); font-weight: 600; }
+    .sel-polutan .v { font-family: "Bricolage Grotesque"; font-size: 15px; font-weight: 700; }
+    .sel-polutan .v small { font-size: 10px; font-weight: 400; color: var(--tinta-redup); }
+
+    /* ---------- Tabel peringkat ---------- */
+    #bagian-tabel { padding: 4px 22px 18px; }
+    #bagian-tabel h2 { font-size: 17px; font-weight: 700; margin: 6px 0 2px; letter-spacing: -0.01em; }
+    #bagian-tabel .ket-tabel { font-size: 13px; color: var(--tinta-redup); margin: 0 0 10px; }
+    table { width: 100%; border-collapse: collapse; background: var(--panel); border-radius: var(--r-panel); overflow: hidden; }
+    thead th {
+      text-align: left; font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase;
+      color: var(--tinta-redup); font-weight: 600;
+      padding: 10px 14px; border-bottom: 1px solid var(--garis);
+    }
+    tbody td { padding: 9px 14px; border-bottom: 1px solid #e6ecf1; font-size: 14px; }
+    tbody tr { cursor: pointer; }
+    tbody tr:hover { background: #eef2f6; }
+    th.ka, td.ka { text-align: right; }
+    td .angka-tabel { font-family: "Bricolage Grotesque"; font-weight: 700; font-size: 16px; }
+    .badge-kategori { color: #fff; font-size: 11.5px; font-weight: 600; padding: 2px 9px; border-radius: 999px; }
+    .abu-teks { color: var(--tinta-redup); }
+
+    /* Marker angka ISPU */
+    .marker-ispu {
+      display: flex; align-items: center; justify-content: center;
+      width: 30px; height: 30px; border-radius: 15px;
+      border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+      font-family: "Bricolage Grotesque"; font-weight: 700; font-size: 13px;
+      color: #fff; cursor: pointer;
+    }
+    .marker-ispu.terang { color: #17181a; }
+    .marker-ispu.tanpa-data { width: 18px; height: 18px; font-size: 0; }
+
+    footer {
+      padding: 10px 22px 14px; font-size: 12.5px; color: var(--tinta-redup);
+      border-top: 1px solid var(--garis); background: var(--panel);
+    }
+
+    @media (max-width: 900px) {
+      #utama { flex-direction: column; }
+      #kolom-kiri { width: 100%; }
+      #area-peta { height: auto; min-height: 380px; }
+      #detail { width: calc(100% - 20px); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      * { transition: none !important; animation: none !important; }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>Tell<em>Haze</em></h1>
+    <span id="status-data" class="status-data">Memuat data…</span>
+    <button id="tombol-refresh">Perbarui data</button>
+  </header>
+
+  <div id="utama">
+    <!-- Kiri: daftar terburuk + sebaran kategori -->
+    <aside id="kolom-kiri">
+      <section class="panel">
+        <h2>Kota terburuk hari ini</h2>
+        <div id="waspada"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Sebaran kategori</h2>
+        <div id="bar-sebaran"></div>
+        <div id="kisi-sebaran" class="kisi-sebaran"></div>
+      </section>
+
+      <section class="panel">
+        <div class="info-kecil">
+          PM2.5 rata-rata seluruh lokasi: <b id="rata-pm25">–</b> µg/m³.<br>
+          <span id="hitung-lokasi"></span>
+        </div>
+      </section>
+    </aside>
+
+    <!-- Peta -->
+    <div id="area-peta">
+      <div id="peta"></div>
+
+      <div id="filter-provinsi"></div>
+
+      <div id="legenda"></div>
+
+      <!-- Panel detail kota -->
+      <div id="detail">
+        <button id="tutup-detail" aria-label="Tutup panel">×</button>
+        <div class="detail-atas">
+          <div>
+            <h3 id="detail-nama">–</h3>
+            <p id="detail-prov">–</p>
+          </div>
+        </div>
+        <span id="detail-status" class="badan-status"></span>
+        <div class="ispu-besar">
+          <span id="detail-ispu" class="angka-besar">–</span>
+          <span id="detail-ket" class="ket-besar"></span>
+        </div>
+        <div id="detail-saran"></div>
+        <div class="wadah-grafik"><canvas id="kanvas-grafik"></canvas></div>
+        <p class="ket-grafik">ISPU per jam: 24 jam terakhir (garis penuh) dan perkiraan 24 jam ke depan (garis putus-putus), waktu WIB.</p>
+        <div id="kisi-polutan"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabel peringkat lengkap -->
+  <section id="bagian-tabel">
+    <h2>Peringkat seluruh kota</h2>
+    <p class="ket-tabel">Klik baris untuk menampilkan detail kota pada peta di atas.</p>
+    <table>
+      <thead>
+        <tr>
+          <th class="ka">#</th>
+          <th>Kota</th>
+          <th>Provinsi</th>
+          <th class="ka">ISPU</th>
+          <th>Kategori</th>
+          <th class="ka">Parameter kritis</th>
+        </tr>
+      </thead>
+      <tbody id="isi-tabel"></tbody>
+    </table>
+  </section>
+
+  <footer>
+    Sumber data: Open-Meteo Air Quality (model CAMS) — hasil model, bukan pengukuran sensor stasiun. Parameter HC tidak tersedia.
+    Perhitungan ISPU mengikuti Permen LHK P.14/2020 (baris 500 &amp; periode rata-rata belum diverifikasi).
+  </footer>
+
+  <script>
+    // ============ Konstanta kategori ISPU ============
+    const WARNA = {
+      'Baik': 'var(--hijau)',
+      'Sedang': 'var(--biru)',
+      'Tidak Sehat': 'var(--kuning)',
+      'Sangat Tidak Sehat': 'var(--merah)',
+      'Berbahaya': 'var(--hitam)',
+      'Tidak ada data': 'var(--abu)'
+    };
+    const WARNA_HEX = {
+      'Baik': '#1e9e4f', 'Sedang': '#2f6fdb', 'Tidak Sehat': '#e3b915',
+      'Sangat Tidak Sehat': '#d33a2c', 'Berbahaya': '#17181a', 'Tidak ada data': '#8a959e'
+    };
+    // Warna teks marker: gelap di atas kategori terang, putih di atas gelap.
+    const TEKS_GELAP = new Set(['Baik', 'Sedang', 'Tidak Sehat', 'Tidak ada data']);
+
+    const SARAN = {
+      'Baik': 'Tidak ada risiko kesehatan. Aktivitas di luar ruangan aman untuk semua orang.',
+      'Sedang': 'Kelompok sensitif (anak, lansia, ibu hamil, penderita gangguan napas) tetap dapat beraktivitas luar, namun perhatikan gejala seperti batuk atau sesak.',
+      'Tidak Sehat': 'Kelompok sensitif sebaiknya mengurangi aktivitas berat di luar ruangan. Gunakan masker saat beraktivitas lama di luar.',
+      'Sangat Tidak Sehat': 'Hindari aktivitas fisik di luar ruangan. Semua orang berisiko mengalami gangguan kesehatan.',
+      'Berbahaya': 'Tetap di dalam ruangan dan hentikan aktivitas di luar. Segera cari bantuan medis bila muncul gejala.',
+      'Tidak ada data': 'Data kualitas udara untuk lokasi ini belum tersedia.'
+    };
+    const NAMA_POLUTAN = { pm25: 'PM2.5', pm10: 'PM10', co: 'CO', no2: 'NO₂', so2: 'SO₂', o3: 'O₃' };
+    const URUTAN_POLUTAN = ['pm25', 'pm10', 'co', 'no2', 'so2', 'o3'];
+
+    // ============ Peta ============
+    const peta = L.map('peta', { zoomControl: false }).setView([-6.9, 110.5], 8);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap'
+    }).addTo(peta);
+    L.control.zoom({ position: 'bottomright' }).addTo(peta);
+
+    // Legenda ringkas.
+    document.getElementById('legenda').innerHTML =
+      Object.entries(WARNA_HEX)
+        .map(([k, w]) => `<span><span class="kunci" style="background:${w}"></span>${k}</span>`)
+        .join('');
+
+    let semuaLokasi = [];           // hasil /api/locations
+    let markerPerLokasi = {};       // id -> marker
+    let grafik = null;              // instance Chart
+    let lokasiTerpilih = null;
+
+    // ============ Muat data utama ============
+    async function muatSemua() {
+      const [lokasiRes, geoRes, sumRes] = await Promise.all([
+        fetch('/api/locations'), fetch('/api/ispu/latest'), fetch('/api/summary')
+      ]);
+      semuaLokasi = await lokasiRes.json();
+      const geojson = await geoRes.json();
+      const ringkasan = await sumRes.json();
+
+      tampilkanStatus(ringkasan);
+      gambarMarker(geojson.features);
+      bangunFilter();
+      tampilkanRingkasan(geojson.features, ringkasan);
+      isiTabel(geojson.features);
+    }
+
+    function tampilkanStatus(ringkasan) {
+      const el = document.getElementById('status-data');
+      if (ringkasan.lokasi_berdata === 0) {
+        el.textContent = 'Belum ada data — klik "Perbarui data".';
+        return;
+      }
+      const contoh = ringkasan.terburuk.find(x => x.ispu !== null);
+      if (contoh) {
+        el.textContent = `${ringkasan.lokasi_berdata} kota terpantau — terburuk: ${contoh.name} (ISPU ${contoh.ispu})`;
+      } else {
+        el.textContent = `${ringkasan.lokasi_berdata} kota terpantau.`;
+      }
+    }
+
+    // ============ Marker ============
+    function gambarMarker(features) {
+      for (const f of features) {
+        const p = f.properties;
+        const [lon, lat] = f.geometry.coordinates;
+
+        const isNoData = p.ispu === null || p.ispu === undefined;
+        const kelas = isNoData ? 'marker-ispu tanpa-data'
+          : `marker-ispu ${TEKS_GELAP.has(p.category) ? 'terang' : ''}`;
+        const warna = WARNA_HEX[p.category] || WARNA_HEX['Tidak ada data'];
+
+        const ikon = L.divIcon({
+          className: '',
+          html: `<div class="${kelas}" style="background:${warna}">${isNoData ? '' : p.ispu}</div>`,
+          iconSize: isNoData ? [18, 18] : [30, 30],
+          iconAnchor: isNoData ? [9, 9] : [15, 15]
+        });
+
+        const marker = L.marker([lat, lon], { icon: ikon }).addTo(peta);
+        marker.bindTooltip(`${p.name}: ${isNoData ? 'Tidak ada data' : 'ISPU ' + p.ispu}`);
+        marker.on('click', () => bukaDetail(p.id));
+        markerPerLokasi[p.id] = marker;
+      }
+    }
+
+    // ============ Filter provinsi ============
+    function bangunFilter() {
+      const provinsi = [...new Set(semuaLokasi.map(l => l.province))];
+      const wadah = document.getElementById('filter-provinsi');
+      wadah.innerHTML = '';
+      const tombolSemua = buatPill('Semua wilayah', null);
+      wadah.appendChild(tombolSemua);
+      for (const prov of provinsi) wadah.appendChild(buatPill(prov, prov));
+    }
+
+    function buatPill(label, provinsi) {
+      const b = document.createElement('button');
+      b.className = 'pill';
+      b.textContent = label;
+      b.dataset.prov = provinsi ?? '';
+      b.addEventListener('click', () => {
+        lokasiTerpilih = null; tutupPanelDetail();
+        for (const el of document.querySelectorAll('.pill')) el.classList.toggle('aktif', el === b);
+        for (const l of semuaLokasi) {
+          const tampil = provinsi === null || l.province === provinsi;
+          const marker = markerPerLokasi[l.id];
+          if (!marker) continue;
+          if (tampil) { if (!peta.hasLayer(marker)) marker.addTo(peta); }
+          else peta.removeLayer(marker);
+        }
+        if (provinsi) {
+          // Pusatkan ke wilayah yang dipilih.
+          const titik = semuaLokasi.filter(l => l.province === provinsi);
+          peta.fitBounds(L.latLngBounds(titik.map(l => [l.lat, l.lon])), { padding: [40, 40] });
+        }
+      });
+      if (provinsi === null) b.classList.add('aktif');
+      return b;
+    }
+
+    // ============ Kolom kiri: terburuk + sebaran ============
+    function tampilkanRingkasan(features, ringkasan) {
+      // --- Kota terburuk ---
+      const wadah = document.getElementById('waspada');
+      wadah.innerHTML = '';
+      ringkasan.terburuk.forEach((kota, i) => {
+        const warna = WARNA_HEX[kota.category] || WARNA_HEX['Tidak ada data'];
+        const div = document.createElement('div');
+        div.className = 'baris-waspada';
+        div.innerHTML = `
+          <span class="peringkat">${i + 1}</span>
+          <span class="strip-kategori" style="background:${warna}"></span>
+          <span class="identitas">
+            <div class="nama">${kota.name}</div>
+            <div class="prov">${kota.province}</div>
+          </span>
+          <span class="skor-kecil" style="color:${kota.ispu === null ? 'var(--abu)' : warna}">${kota.ispu ?? '–'}</span>`;
+        div.addEventListener('click', () => bukaDetail(kota.id));
+        wadah.appendChild(div);
+      });
+
+      // --- Sebaran kategori (satu bar penuh) ---
+      const kategori = ringkasan.jumlah_per_kategori;
+      const berdata = Object.entries(kategori).filter(([k]) => k !== 'Tidak ada data');
+      const total = berdata.reduce((a, [, v]) => a + v, 0);
+      const bar = document.getElementById('bar-sebaran');
+      bar.innerHTML = total === 0
+        ? '<span style="width:100%;background:var(--abu)"></span>'
+        : berdata.map(([k, v]) => v === 0 ? '' : `<span style="width:${v / total * 100}%;background:${WARNA_HEX[k]}"></span>`).join('');
+      document.getElementById('kisi-sebaran').innerHTML = berdata
+        .map(([k, v]) => `<span><span class="kunci" style="background:${WARNA_HEX[k]}"></span>${k} <b>${v}</b></span>`)
+        .join('');
+
+      document.getElementById('rata-pm25').textContent = ringkasan.rata_pm25_terakhir ?? '–';
+      document.getElementById('hitung-lokasi').textContent =
+        `${ringkasan.total_lokasi} kota dipantau, ${ringkasan.lokasi_berdata} punya data.`;
+    }
+
+    // ============ Tabel peringkat ============
+    function isiTabel(features) {
+      const baris = features
+        .map(f => f.properties)
+        .sort((a, b) => (b.ispu ?? -1) - (a.ispu ?? -1));
+      document.getElementById('isi-tabel').innerHTML = baris.map((p, i) => `
+        <tr data-id="${p.id}">
+          <td class="ka">${i + 1}</td>
+          <td><b>${p.name}</b></td>
+          <td>${p.province}</td>
+          <td class="ka"><span class="angka-tabel" style="color:${p.ispu === null ? 'var(--abu)' : WARNA_HEX[p.category]}">${p.ispu ?? '–'}</span></td>
+          <td><span class="badge-kategori" style="background:${WARNA_HEX[p.category]}">${p.category}</span></td>
+          <td class="ka">${p.critical_parameter ? NAMA_POLUTAN[p.critical_parameter] || p.critical_parameter : '<span class="abu-teks">–</span>'}</td>
+        </tr>`).join('');
+      for (const tr of document.querySelectorAll('#isi-tabel tr')) {
+        tr.addEventListener('click', () => bukaDetail(Number(tr.dataset.id)));
+      }
+    }
+
+    // ============ Panel detail kota ============
+    async function bukaDetail(id) {
+      const lokasi = semuaLokasi.find(l => l.id === id);
+      const feature = (await (await fetch('/api/ispu/latest')).json())
+        .features.find(f => f.properties.id === id);
+      if (!lokasi || !feature) return;
+      const p = feature.properties;
+
+      lokasiTerpilih = id;
+      const detail = document.getElementById('detail');
+      detail.classList.add('tampak');
+
+      document.getElementById('detail-nama').textContent = p.name;
+      document.getElementById('detail-prov').textContent = `${p.province} · ${lokasi.lat}, ${lokasi.lon}`;
+      const status = document.getElementById('detail-status');
+      status.textContent = p.category;
+      status.style.background = WARNA_HEX[p.category];
+
+      const isNoData = p.ispu === null;
+      const angka = document.getElementById('detail-ispu');
+      angka.textContent = isNoData ? '–' : p.ispu;
+      angka.style.color = isNoData ? 'var(--abu)' : WARNA_HEX[p.category];
+      document.getElementById('detail-ket').textContent = isNoData
+        ? 'Belum ada data ISPU untuk lokasi ini.'
+        : `Skala ISPU — polutan kritis: ${NAMA_POLUTAN[p.critical_parameter] || p.critical_parameter}`;
+      document.getElementById('detail-saran').textContent = SARAN[p.category];
+
+      // Kisi konsentrasi terkini per polutan (µg/m³, nilai mentah terakhir).
+      const kisi = document.getElementById('kisi-polutan');
+      kisi.innerHTML = URUTAN_POLUTAN.map(param => {
+        // per_parameter berisi ISPU per parameter; konsentrasi mentah
+        // diambil dari baris terakhir — tampilkan ISPU per parameter saja.
+        const ispu = (p.per_parameter || {})[param];
+        return `<div class="sel-polutan">
+          <div class="p">${NAMA_POLUTAN[param]}</div>
+          <div class="v" style="color:${ispu === null || ispu === undefined ? 'var(--abu)' : 'var(--tinta)'}">
+            ${ispu ?? '–'} <small>ISPU</small>
+          </div>
+        </div>`;
+      }).join('');
+
+      // Peta: pan ke lokasi dan angkat markernya ke depan.
+      const marker = markerPerLokasi[id];
+      if (marker) {
+        peta.panTo(marker.getLatLng(), { animate: true });
+        setTimeout(() => marker.getElement()?.classList.add('terpilih'), 0);
+      }
+
+      await muatGrafik(id);
+    }
+
+    // ============ Grafik riwayat 24 jam lalu + 24 jam prediksi ============
+    async function muatGrafik(id) {
+      const res = await fetch(`/api/ispu/${id}/history?hours=48`);
+      const data = await res.json();
+      const deret = data.data;
+      // Pisahkan: sebelum "now" = riwayat (garis penuh), sesudah = prediksi (putus).
+      const label = deret.map(d => d.timestamp.slice(11, 16));
+      const nilai = deret.map(d => d.ispu);
+      const indeksNow = deret.findIndex(d => d.timestamp >= data.now);
+      const batas = indeksNow === -1 ? deret.length : indeksNow + 1;
+
+      const nilaiRiwayat = nilai.map((v, i) => i < batas ? v : null);
+      const nilaiPrediksi = nilai.map((v, i) => i >= batas ? v : null);
+      // Sambungkan dua garis di titik batas supaya tidak terlihat putus aneh.
+      if (batas > 0 && batas <= nilai.length) nilaiPrediksi[batas - 1] = nilai[batas - 1];
+
+      if (grafik) grafik.destroy();
+      grafik = new Chart(document.getElementById('kanvas-grafik'), {
+        type: 'line',
+        data: {
+          labels: label,
+          datasets: [
+            { label: 'Riwayat', data: nilaiRiwayat, borderColor: '#123b47', borderWidth: 2, tension: 0.3, pointRadius: 0, spanGaps: true },
+            { label: 'Perkiraan', data: nilaiPrediksi, borderColor: '#123b47', borderDash: [5, 4], borderWidth: 2, tension: 0.3, pointRadius: 0, spanGaps: true }
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          animation: { duration: 300 },
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: { title: items => 'Jam ' + items[0].label }
+            }
+          },
+          scales: {
+            x: { ticks: { maxTicksLimit: 6, font: { size: 10 } }, grid: { display: false } },
+            y: { beginAtZero: true, suggestedMax: 200, ticks: { maxTicksLimit: 5, font: { size: 10 } }, grid: { color: '#e6ecf1' } }
+          }
+        }
+      });
+    }
+
+    function tutupPanelDetail() {
+      document.getElementById('detail').classList.remove('tampak');
+    }
+    document.getElementById('tutup-detail').addEventListener('click', tutupPanelDetail);
+
+    // ============ Tombol perbarui ============
+    document.getElementById('tombol-refresh').addEventListener('click', async (e) => {
+      const tombol = e.target;
+      tombol.disabled = true;
+      tombol.textContent = 'Mengambil data…';
+      await fetch('/api/refresh', { method: 'POST' });
+      // Bersihkan marker lama lalu gambar ulang dari data baru.
+      Object.values(markerPerLokasi).forEach(m => peta.removeLayer(m));
+      markerPerLokasi = {};
+      await muatSemua();
+      tombol.disabled = false;
+      tombol.textContent = 'Perbarui data';
+    });
+
+    // Muat pertama kali.
+    muatSemua();
+  </script>
+</body>
+</html>
