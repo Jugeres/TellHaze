@@ -11,3 +11,6 @@ ispu.db
 # IDE
 .vscode/
 .idea/
+
+# Artefak browser automation
+.playwright-cli/
