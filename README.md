@@ -2,7 +2,7 @@
 
 Dashboard pemantau kualitas udara (ISPU) interaktif berbasis web untuk 55 kota di Indonesia (Sumsel, Jakarta, Jabar, dan Jatim).
 
-Dibuat sebagai pilot. Data polutan diambil secara berkala dari Open-Meteo Air Quality API, dihitung menjadi nilai ISPU standar KLHK, lalu divisualisasikan dalam peta interaktif.
+Dibuat sebagai pilot project. Data polutan diambil secara berkala dari Open-Meteo Air Quality API, dihitung menjadi nilai ISPU standar KLHK, lalu divisualisasikan dalam peta interaktif.
 
 ---
 
