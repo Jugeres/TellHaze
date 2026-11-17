@@ -523,14 +523,15 @@
     // GeoJSON statis di static/data (hasil klasifikasi citra satelit).
     // Dimuat MALAS: hanya di-fetch saat tombol dinyalakan pertama kali,
     // agar halaman utama tetap ringan (file ~4,4 MB).
-    // TODO VERIFIKASI: arti kelas 0-3 belum dikonfirmasi ke penyedia data;
-    // cukup ubah NAMA_LULC dan WARNA_LULC di bawah jika sudah pasti.
-    const WARNA_LULC = { 0: '#2f6fed', 1: '#2f9e44', 2: '#e03131', 3: '#f59f00' };
+    // Arti kelas SUDAH diverifikasi cocok dengan tampilan Google Earth
+    // Engine (Praktikum_02_LULC_Surabaya): 0=terbangun, 1=vegetasi,
+    // 2=badan air, 3=lahan terbuka/tambak.
+    const WARNA_LULC = { 0: '#e03131', 1: '#2f9e44', 2: '#2f6fed', 3: '#f59f00' };
     const NAMA_LULC = {
-      0: 'Badan air',
+      0: 'Kawasan terbangun',
       1: 'Vegetasi / ruang terbuka hijau',
-      2: 'Kawasan terbangun',
-      3: 'Lahan terbuka',
+      2: 'Badan air',
+      3: 'Lahan terbuka / tambak',
     };
     let layerLulc = null;
     let lulcTampil = false;
