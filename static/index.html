@@ -170,7 +170,25 @@
       padding: 5px 13px; border-radius: 999px;
       backdrop-filter: blur(8px);
     }
-    .pill.aktif { background: linear-gradient(135deg, var(--bara-tua), var(--merah-ember)); color: #fff; border-color: transparent; }
+    .pill.aktif, .pill-lulc.aktif { background: linear-gradient(135deg, var(--bara-tua), var(--merah-ember)); color: #fff; border-color: transparent; }
+
+    /* Tombol & legenda layer tutupan lahan (LULC) Surabaya */
+    #kontrol-lulc { position: absolute; top: 46px; left: 10px; z-index: 1000; }
+    .pill-lulc {
+      font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+      border: 1px solid var(--garis); background: var(--panel); color: var(--tinta);
+      padding: 5px 13px; border-radius: 999px;
+      backdrop-filter: blur(8px);
+    }
+    .pill-lulc.muat { opacity: 0.6; pointer-events: none; }
+    #legenda-lulc {
+      position: absolute; bottom: 40px; left: 10px; z-index: 1000;
+      background: var(--panel); border: 1px solid var(--garis);
+      border-radius: var(--r-kecil); padding: 8px 12px; font-size: 11.5px;
+      color: var(--tinta); backdrop-filter: blur(8px); display: none;
+    }
+    #legenda-lulc .baris-lulc { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+    #legenda-lulc .kotak { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
 
     /* Legenda ringkas di bawah kiri peta */
     #legenda {
@@ -344,6 +362,12 @@
 
       <div id="filter-provinsi"></div>
 
+      <!-- Layer tutupan lahan (LULC) Surabaya: dimuat malas saat tombol diklik -->
+      <div id="kontrol-lulc">
+        <button id="tombol-lulc" class="pill-lulc">🗺️ Tutupan lahan Surabaya</button>
+      </div>
+      <div id="legenda-lulc"></div>
+
       <div id="legenda"></div>
 
       <!-- Panel detail kota -->
@@ -494,6 +518,66 @@
     let markerPerLokasi = {};       // id -> marker
     let grafik = null;              // instance Chart
     let lokasiTerpilih = null;
+
+    // ============ Layer tutupan lahan (LULC) Surabaya ============
+    // GeoJSON statis di static/data (hasil klasifikasi citra satelit).
+    // Dimuat MALAS: hanya di-fetch saat tombol dinyalakan pertama kali,
+    // agar halaman utama tetap ringan (file ~4,4 MB).
+    // TODO VERIFIKASI: arti kelas 0-3 belum dikonfirmasi ke penyedia data;
+    // cukup ubah NAMA_LULC dan WARNA_LULC di bawah jika sudah pasti.
+    const WARNA_LULC = { 0: '#2f6fed', 1: '#2f9e44', 2: '#e03131', 3: '#f59f00' };
+    const NAMA_LULC = {
+      0: 'Badan air',
+      1: 'Vegetasi / ruang terbuka hijau',
+      2: 'Kawasan terbangun',
+      3: 'Lahan terbuka',
+    };
+    let layerLulc = null;
+    let lulcTampil = false;
+
+    // Pane khusus: poligon di atas tile peta tapi DI BAWAH marker ISPU.
+    peta.createPane('lulc');
+    peta.getPane('lulc').style.zIndex = 350;
+
+    const tombolLulc = document.getElementById('tombol-lulc');
+    const legendaLulc = document.getElementById('legenda-lulc');
+
+    tombolLulc.addEventListener('click', async () => {
+      if (lulcTampil) {
+        peta.removeLayer(layerLulc);
+        lulcTampil = false;
+        tombolLulc.classList.remove('aktif');
+        legendaLulc.style.display = 'none';
+        return;
+      }
+      tombolLulc.classList.add('muat'); // indikator "sedang memuat"
+      try {
+        if (!layerLulc) {
+          const geo = await fetch('/data/LULC_Surabaya_v3.geojson').then(r => r.json());
+          layerLulc = L.geoJSON(geo, {
+            pane: 'lulc',
+            renderer: L.canvas({ pane: 'lulc' }), // canvas agar 7 ribu poligon tetap mulus
+            style: f => ({
+              stroke: false,
+              fillColor: WARNA_LULC[f.properties.kelas],
+              fillOpacity: 0.55,
+            }),
+          });
+        }
+        layerLulc.addTo(peta);
+        lulcTampil = true;
+        tombolLulc.classList.add('aktif');
+        peta.fitBounds(layerLulc.getBounds(), { padding: [20, 20] });
+        legendaLulc.innerHTML = Object.entries(NAMA_LULC)
+          .map(([k, n]) => `<div class="baris-lulc"><span class="kotak" style="background:${WARNA_LULC[k]}"></span>${n}</div>`)
+          .join('');
+        legendaLulc.style.display = 'block';
+      } catch (e) {
+        alert('Gagal memuat layer tutupan lahan: ' + e);
+      } finally {
+        tombolLulc.classList.remove('muat');
+      }
+    });
 
     // ============ Muat data utama ============
     let sibukMemuat = false; // cegah muatSemua tumpang tindih (auto-refresh)
