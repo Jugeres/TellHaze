@@ -193,7 +193,7 @@
     /* Legenda ringkas di bawah kiri peta */
     #legenda {
       position: absolute; bottom: 8px; left: 10px; z-index: 1000;
-      background: rgba(17, 21, 27, 0.88); border: 1px solid var(--garis);
+      background: var(--panel); border: 1px solid var(--garis);
       border-radius: var(--r-kecil); padding: 6px 10px; font-size: 11.5px;
       display: flex; gap: 10px; align-items: center; color: var(--tinta);
       backdrop-filter: blur(8px);
@@ -505,6 +505,7 @@
       localStorage.setItem('tellhaze-tema', jadiTerang ? 'light' : 'dark');
       document.getElementById('tombol-tema').textContent = jadiTerang ? '🌙' : '☀️';
       terapkanTemaPeta();
+      perbaruiGayaLulc(); // opacity layer LULC ikut menyesuaikan tema
     });
     L.control.zoom({ position: 'bottomright' }).addTo(peta);
 
@@ -536,6 +537,15 @@
     let layerLulc = null;
     let lulcTampil = false;
 
+    // Opacity polutan LULC menyesuaikan tema: di tile gelap 0.55 sudah kontras,
+    // di tile terang (OSM) perlu lebih pekat agar tidak tampak pudar.
+    function opasitasLulc() {
+      return document.body.classList.contains('light') ? 0.72 : 0.55;
+    }
+    function perbaruiGayaLulc() {
+      if (layerLulc) layerLulc.setStyle({ fillOpacity: opasitasLulc() });
+    }
+
     // Pane khusus: poligon di atas tile peta tapi DI BAWAH marker ISPU.
     peta.createPane('lulc');
     peta.getPane('lulc').style.zIndex = 350;
@@ -561,7 +571,7 @@
             style: f => ({
               stroke: false,
               fillColor: WARNA_LULC[f.properties.kelas],
-              fillOpacity: 0.55,
+              fillOpacity: opasitasLulc(),
             }),
           });
         }
